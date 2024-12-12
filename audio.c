@@ -26,8 +26,8 @@ union sample {
 /*-----------------------------------------------------------------------------*/
 /* AUXILIARY FUNCTIONS */
 
-unsigned int time_to_sample_number ( Audio* audio, double time ) {
-	return (unsigned int)(time*audio->sample_rate);
+int time_to_sample_number ( Audio* audio, double time ) {
+	return (int)(time*audio->sample_rate);
 }
 
 bool is_little_endian () {
@@ -187,7 +187,7 @@ void free_transcoded_audio ( AudioTranscoded* audio ) {
 /* AUDIO GENERATORS */
 
 void white_noise ( Audio* audio, double max_volume, double start, double duration ) {
-	if ( max_volume < 0.0 || start < 0.0 || duration < 0.0 || start+duration >= audio->duration ) {
+	if ( max_volume < 0.0 || duration < 0.0 || start+duration >= audio->duration ) {
 		return;
 	}
 
@@ -211,7 +211,7 @@ void white_noise ( Audio* audio, double max_volume, double start, double duratio
 }
 
 void sine_wave ( Audio* audio, double frequency, double max_volume, double start, double duration ) {
-	if ( max_volume < 0.0 || start < 0.0 || duration < 0.0 || start+duration >= audio->duration ) {
+	if ( max_volume < 0.0 || duration < 0.0 || start+duration >= audio->duration ) {
 		return;
 	}
 
@@ -242,7 +242,7 @@ void sine_wave ( Audio* audio, double frequency, double max_volume, double start
 }
 
 void cosine_wave ( Audio* audio, double frequency, double max_volume, double start, double duration ) {
-	if ( max_volume < 0.0 || start < 0.0 || duration < 0.0 || start+duration >= audio->duration ) {
+	if ( max_volume < 0.0 || duration < 0.0 || start+duration >= audio->duration ) {
 		return;
 	}
 
@@ -273,7 +273,7 @@ void cosine_wave ( Audio* audio, double frequency, double max_volume, double sta
 }
 
 void square_wave ( Audio* audio, double frequency, double max_volume, double start, double duration ) {
-	if ( max_volume < 0.0 || start < 0.0 || duration < 0.0 || start+duration >= audio->duration ) {
+	if ( max_volume < 0.0 || duration < 0.0 || start+duration >= audio->duration ) {
 		return;
 	}
 
@@ -307,7 +307,7 @@ void square_wave ( Audio* audio, double frequency, double max_volume, double sta
 }
 
 void sawtooth_wave ( Audio* audio, double frequency, double max_volume, double start, double duration ) {
-	if ( max_volume < 0.0 || start < 0.0 || duration < 0.0 || start+duration >= audio->duration ) {
+	if ( max_volume < 0.0 || duration < 0.0 || start+duration >= audio->duration ) {
 		return;
 	}
 
@@ -344,7 +344,7 @@ void sawtooth_wave ( Audio* audio, double frequency, double max_volume, double s
 
 
 void triangular_wave ( Audio* audio, double frequency, double max_volume, double start, double duration ) {
-	if ( max_volume < 0.0 || start < 0.0 || duration < 0.0 || start+duration >= audio->duration ) {
+	if ( max_volume < 0.0 || duration < 0.0 || start+duration >= audio->duration ) {
 		return;
 	}
 
@@ -389,7 +389,7 @@ void triangular_wave ( Audio* audio, double frequency, double max_volume, double
 
 
 void constant_level ( Audio* audio, double level, double start, double duration ) {
-	if ( level < 0.0 || start < 0.0 || duration < 0.0 || start+duration >= audio->duration ) {
+	if ( level < 0.0 || duration < 0.0 || start+duration >= audio->duration ) {
 		return;
 	}
 
@@ -413,7 +413,7 @@ void constant_level ( Audio* audio, double level, double start, double duration 
 }
 
 void silence ( Audio* audio, double start, double duration ) {
-	if ( start < 0.0 || duration < 0.0 || start+duration >= audio->duration ) {
+	if ( duration < 0.0 || start+duration >= audio->duration ) {
 		return;
 	}
 
@@ -445,7 +445,7 @@ void am_modulate ( Audio* audio, Audio* carrier ) {
 }
 
 void amplify ( Audio* audio, double amp_factor, double start, double duration ) {
-	if ( start < 0.0 || duration < 0.0 || start+duration >= audio->duration ) {
+	if ( duration < 0.0 || start+duration >= audio->duration ) {
 		return;
 	}
 
@@ -467,7 +467,7 @@ void amplify ( Audio* audio, double amp_factor, double start, double duration ) 
 }
 
 void shift_vertically ( Audio* audio, double shift, double start, double duration ) {
-	if ( start < 0.0 || duration < 0.0 || start+duration >= audio->duration ) {
+	if ( duration < 0.0 || start+duration >= audio->duration ) {
 		return;
 	}
 
@@ -489,7 +489,7 @@ void shift_vertically ( Audio* audio, double shift, double start, double duratio
 }
 
 void shift_horizontally ( Audio* audio, double shift, double start, double duration ) {
-	if ( start < 0.0 || duration < 0.0 || start+duration >= audio->duration ) {
+	if ( duration < 0.0 || start+duration >= audio->duration ) {
 		return;
 	}
 
@@ -500,28 +500,62 @@ void shift_horizontally ( Audio* audio, double shift, double start, double durat
 		start = audio->current_place;
 	}
 
-	unsigned int start_sample = time_to_sample_number(audio, start);
-	unsigned int end_sample = time_to_sample_number(audio, start+duration);
-	unsigned int sample_shift_width = (unsigned int)(audio->sample_rate * shift);
-
+	unsigned int start_sample;
+	unsigned int end_sample;
+	
+	int copy_start;
+	int copy_end;
+	int copy_offset;
+	
 	if (shift < 0.0) {
-		for ( unsigned int i=0; i<end_sample-sample_shift_width; i++ ) {
+		shift = -shift;
+		copy_start = time_to_sample_number(audio, start-shift);
+		copy_end = time_to_sample_number(audio, start+duration-shift);
+		copy_offset = time_to_sample_number(audio, shift);
+		
+		start_sample = time_to_sample_number(audio, start+duration-shift);
+		end_sample = time_to_sample_number(audio, start+duration);
+		
+		for ( int i=copy_start; i<copy_end; i++ ) {
+			if (i < 0) {
+				continue;
+			}
 			for (int j=0; j<audio->channels; j++) {
-				audio->raw_audio[j][i] = audio->raw_audio[j][end_sample-sample_shift_width+i] + (double)(shift*DBL_MAX);
+				audio->raw_audio[j][i] = audio->raw_audio[j][i+copy_offset];
+			}
+		}
+		for ( int i=start_sample; i<end_sample; i++ ) {
+			for ( int j=0; j<audio->channels; j++ ) {
+				audio->raw_audio[j][i] = 0.0;
 			}
 		}
 	}
 	else {
-		for ( unsigned int i=end_sample; i>=start_sample+sample_shift_width; i-- ) {
+		copy_start = time_to_sample_number(audio, start+shift+duration);
+		copy_end = time_to_sample_number(audio, start+shift);
+		copy_offset = time_to_sample_number(audio, shift);
+		
+		start_sample = time_to_sample_number(audio, start);
+		end_sample = time_to_sample_number(audio, start+shift);
+	
+		for ( unsigned int i=copy_start; i>=copy_end; i-- ) {
+			if (i >= audio->sample_quantity_per_channel) {
+				continue;
+			}
 			for (int j=0; j<audio->channels; j++) {
-				audio->raw_audio[j][i] = audio->raw_audio[j][start_sample+sample_shift_width+i] + (double)(shift*DBL_MAX);
+				audio->raw_audio[j][i] = audio->raw_audio[j][i-copy_offset];
+			}
+		}
+		for ( unsigned int i=start_sample; i<end_sample; i++ ) {
+			for (int j=0; j<audio->channels; j++) {
+				audio->raw_audio[j][i] = 0.0;
 			}
 		}
 	}
 }
 
 void limit_volume ( Audio* audio, double max_volume, double start, double duration ) {
-	if ( start < 0.0 || duration < 0.0 || start+duration >= audio->duration ) {
+	if ( duration < 0.0 || start+duration >= audio->duration ) {
 		return;
 	}
 
@@ -612,7 +646,7 @@ void append_sound (Audio* audio, Sound* sound, double frequency, void(*generator
 
 
 void fade_in ( Audio* audio, double duration, double to_level, double start ) {
-	if ( to_level < 0.0 || start < 0.0 || duration < 0.0 || start+duration >= audio->duration ) {
+	if ( to_level < 0.0 || duration < 0.0 || start+duration >= audio->duration ) {
 		return;
 	}
 
@@ -640,7 +674,7 @@ void fade_in ( Audio* audio, double duration, double to_level, double start ) {
 }
 
 void fade_out( Audio* audio, double duration, double to_level, double start ) {
-	if ( to_level < 0.0 || start < 0.0 || duration < 0.0 || start+duration >= audio->duration ) {
+	if ( to_level < 0.0 || duration < 0.0 || start+duration >= audio->duration ) {
 		return;
 	}
 
@@ -669,7 +703,7 @@ void fade_out( Audio* audio, double duration, double to_level, double start ) {
 
 
 void make_positive ( Audio* audio, double start, double duration ) {
-	if ( start < 0.0 || duration < 0.0 || start+duration >= audio->duration ) {
+	if ( duration < 0.0 || start+duration >= audio->duration ) {
 		return;
 	}
 
@@ -693,7 +727,7 @@ void make_positive ( Audio* audio, double start, double duration ) {
 }
 
 void make_negative ( Audio* audio, double start, double duration ) {
-	if ( start < 0.0 || duration < 0.0 || start+duration >= audio->duration ) {
+	if ( duration < 0.0 || start+duration >= audio->duration ) {
 		return;
 	}
 
@@ -717,7 +751,7 @@ void make_negative ( Audio* audio, double start, double duration ) {
 }
 
 void invert ( Audio* audio, double start, double duration ) {
-	if ( start < 0.0 || duration < 0.0 || start+duration >= audio->duration ) {
+	if ( duration < 0.0 || start+duration >= audio->duration ) {
 		return;
 	}
 
@@ -740,7 +774,7 @@ void invert ( Audio* audio, double start, double duration ) {
 
 
 void compress ( Audio* audio, double max_level, double start, double duration ) {
-	if ( max_level < 0.0 || start < 0.0 || duration < 0.0 || start+duration >= audio->duration ) {
+	if ( max_level < 0.0 || duration < 0.0 || start+duration >= audio->duration ) {
 		return;
 	}
 
