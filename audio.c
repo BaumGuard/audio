@@ -23,6 +23,17 @@ union sample {
 	uint8_t 	i64_arr [8];
 };
 
+
+union uint32bit {
+		uint8_t bytes[4];
+		uint32_t uint32;
+	};
+
+union uint16bit {
+	uint8_t bytes[2];
+	uint16_t uint16;
+};
+
 /*-----------------------------------------------------------------------------*/
 /* AUXILIARY FUNCTIONS */
 
@@ -877,6 +888,121 @@ void write_audio_to_file ( Audio* audio, unsigned int format, unsigned int sampl
 	fclose(fptr);
 }
 
+void create_wav_file (Audio* audio, unsigned int format, char* file_path) {
+	AudioTranscoded audio_transcoded;
+	transcode_raw_audio( &audio_transcoded, audio, format );
+
+
+	char wav_header [44];
+
+	wav_header[0] = 'R';
+	wav_header[1] = 'I';
+	wav_header[2] = 'F';
+	wav_header[3] = 'F';
+
+	union uint32bit total_file_size;
+
+	total_file_size.uint32 = audio_transcoded.sample_quantity_total * audio_transcoded.bytes_per_sample + 44;
+
+	wav_header[4] = total_file_size.bytes[0];
+	wav_header[5] = total_file_size.bytes[1];
+	wav_header[6] = total_file_size.bytes[2];
+	wav_header[7] = total_file_size.bytes[3];
+
+	wav_header[8] = 'W';
+	wav_header[9] = 'A';
+	wav_header[10] = 'V';
+	wav_header[11] = 'E';
+
+	wav_header[12] = 'f';
+	wav_header[13] = 'm';
+	wav_header[14] = 't';
+	wav_header[15] = ' ';
+
+	union uint32bit length_of_format_data;
+	length_of_format_data.uint32 = 16;
+
+	wav_header[16] = length_of_format_data.bytes[0];
+	wav_header[17] = length_of_format_data.bytes[1];
+	wav_header[18] = length_of_format_data.bytes[2];
+	wav_header[19] = length_of_format_data.bytes[3];
+
+	union uint16bit format_type;
+	format_type.uint16 = 1;
+
+	wav_header[20] = format_type.bytes[0];
+	wav_header[21] = format_type.bytes[1];
+
+	union uint16bit number_of_channels;
+	number_of_channels.uint16 = audio_transcoded.channels;
+
+	wav_header[22] = number_of_channels.bytes[0];
+	wav_header[23] = number_of_channels.bytes[1];
+
+	union uint32bit sample_rate;
+	sample_rate.uint32 = audio_transcoded.sample_rate;
+
+	wav_header[24] = sample_rate.bytes[0];
+	wav_header[25] = sample_rate.bytes[1];
+	wav_header[26] = sample_rate.bytes[2];
+	wav_header[27] = sample_rate.bytes[3];
+
+	union uint32bit byte28to31;
+
+	byte28to31.uint32 = audio_transcoded.sample_rate * audio_transcoded.bytes_per_sample * audio_transcoded.channels;
+
+	wav_header[28] = byte28to31.bytes[0];
+	wav_header[29] = byte28to31.bytes[1];
+	wav_header[30] = byte28to31.bytes[2];
+	wav_header[31] = byte28to31.bytes[3];
+
+	union uint16bit byte32to33;
+
+	byte32to33.uint16 = (uint16_t)(((double)audio_transcoded.sample_rate * (double)audio_transcoded.channels) / 8.1);
+
+	wav_header[32] = byte32to33.bytes[0];
+	wav_header[33] = byte32to33.bytes[1];
+
+	union uint16bit bits_per_sample;
+
+	bits_per_sample.uint16 = audio_transcoded.bytes_per_sample * 8;
+	wav_header[34] = bits_per_sample.bytes[0];
+	wav_header[35] = bits_per_sample.bytes[1];
+
+
+	wav_header[36] = 'd';
+	wav_header[37] = 'a';
+	wav_header[38] = 't';
+	wav_header[39] = 'a';
+
+	union uint32bit data_section_size;
+	data_section_size.uint32 = audio_transcoded.sample_quantity_total * audio_transcoded.bytes_per_sample;
+
+	wav_header[40] = data_section_size.bytes[0];
+	wav_header[41] = data_section_size.bytes[1];
+	wav_header[42] = data_section_size.bytes[2];
+	wav_header[43] = data_section_size.bytes[3];
+
+	char* byte_sequence = (char*) malloc(data_section_size.uint32 + 44);
+
+	for(int i=0; i<44; i++) {
+		byte_sequence[i] = (char) wav_header[i];
+	}
+
+	FILE* fptr;
+	fptr = fopen(file_path, "wb");
+
+	serialize_transcoded_audio(&byte_sequence[44], &audio_transcoded);
+
+	for (int i=0; i<data_section_size.uint32+44; i++) {
+		fputc(byte_sequence[i], fptr);
+	}
+
+	free(byte_sequence);
+
+	fclose(fptr);
+}
+
 void print_binary_audio ( Audio* audio ) {
 	for (int i=0; i<audio->sample_quantity_per_channel; i++) {
 		for (int j=0; j<audio->channels; j++) {
@@ -886,7 +1012,7 @@ void print_binary_audio ( Audio* audio ) {
 }
 
 
-void load_audio_from_file ( Audio* audio, char* file_path, unsigned int sample_rate, unsigned int format, unsigned int channels ) {
+void load_audio_from_raw_file ( Audio* audio, char* file_path, unsigned int sample_rate, unsigned int format, unsigned int channels ) {
 	unsigned int bytes_per_sample = 0;
 	
 	if (format == S8 || format == U8) {
@@ -1110,6 +1236,80 @@ void load_audio_from_file ( Audio* audio, char* file_path, unsigned int sample_r
 
 	fclose(audio_file);
 }
+
+void load_audio_from_wav_file ( Audio* audio, char* file_path ) {
+	FILE* wav_file = fopen(file_path, "r");
+
+	fseek(wav_file, 0L, SEEK_END);
+	unsigned int file_size = ftell(wav_file);
+	rewind(wav_file);
+
+	char* file = malloc(file_size);
+
+	for (unsigned int i=0; i<file_size; i++) {
+		file[i] = fgetc(wav_file);
+	}
+
+	union uint32bit sample_rate;
+	sample_rate.bytes[0] = file[24];
+	sample_rate.bytes[1] = file[25];
+	sample_rate.bytes[2] = file[26];
+	sample_rate.bytes[3] = file[27];
+
+	union uint32bit data_section_size;
+	data_section_size.bytes[0] = file[40];
+	data_section_size.bytes[1] = file[41];
+	data_section_size.bytes[2] = file[42];
+	data_section_size.bytes[3] = file[43];
+
+	union uint16bit number_of_channels;
+	number_of_channels.bytes[0] = file[22];
+	number_of_channels.bytes[1] = file[23];
+
+	union uint16bit bytes_per_sample;
+	bytes_per_sample.bytes[0] = file[34];
+	bytes_per_sample.bytes[1] = file[35];
+	bytes_per_sample.uint16 /= 8;
+
+
+	double duration = (double)data_section_size.uint32 / (double)number_of_channels.uint16 / (double)bytes_per_sample.uint16 / (double)sample_rate.uint32;
+
+	init_audio(audio, sample_rate.uint32, duration, number_of_channels.uint16);
+
+	union sample current_sample;
+	double current_sample_double;
+
+	unsigned int sample_it = 0;
+
+
+	for (unsigned int i=0; i<data_section_size.uint32; i+=bytes_per_sample.uint16) {
+		for (int j=0; j<bytes_per_sample.uint16; j++) {
+			current_sample.i64_arr[j] = file[i+j+44];
+		}
+
+		switch (bytes_per_sample.uint16) {
+			case 1:
+				current_sample_double = (double)current_sample.s8 * (DBL_MAX/INT8_MAX);
+				break;
+			case 2:
+				current_sample_double = (double)current_sample.s16 * (DBL_MAX/INT16_MAX);
+				break;
+			case 3:
+				current_sample_double = (double)current_sample.s32 * (DBL_MAX/INT24_MAX);
+				break;
+			case 4:
+				current_sample_double = (double)current_sample.s32 * (DBL_MAX/INT32_MAX);
+				break;
+		}
+
+		audio->raw_audio[sample_it%audio->channels][sample_it/audio->channels] = current_sample_double;
+		sample_it++;
+
+		for (int j=0; j<8; j++) {
+			current_sample.i64_arr[j] = 0;
+		}
+	}
+};
 
 /*-----------------------------------------------------------------------------*/
 /* TRANSCODER */

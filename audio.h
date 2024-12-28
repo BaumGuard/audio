@@ -5,6 +5,7 @@
 #include <math.h>
 #include <float.h>
 #include <stdbool.h>
+#include <string.h>
 
 /*-----------------------------------------------------------------------------*/
 /* MACROS */
@@ -358,6 +359,14 @@ File writer (Write the raw audio data to a file)
 void write_audio_to_file ( Audio* audio, unsigned int format, unsigned int sample_rate, char* file_path );
 
 /*
+Create a WAV file and save it
+- audio:		Initialized audio object to be saved in the WAV file
+- format:		Binary audio format for writing the audio to a file (enum audio_formats)
+- file_path:	File path to the WAV file to be created
+*/
+void create_wav_file (Audio* audio, unsigned int format, char* file_path);
+
+/*
 Output the raw audio data to stdout
 - audio: Pointer to an initialized Audio struct to be outputted onto stdout
 */
@@ -371,7 +380,14 @@ File reader (Read raw audio from file into Audio struct)
 - format:		Binary audio format for writing the audio to a file (enum audio_formats)
 - channels: 	Number of audio channels
 */
-void load_audio_from_file ( Audio* audio, char* file_path, unsigned int sample_rate, unsigned int format, unsigned int channels );
+void load_audio_from_raw_file ( Audio* audio, char* file_path, unsigned int sample_rate, unsigned int format, unsigned int channels );
+
+/*
+File reader (Read raw audio from file into Audio struct)
+- audio: 		Pointer to an uninitialized Audio struct into which the audio data from the WAV file should be loaded
+- file_path: 	File path of the WAV file from which the raw audio data should be loaded
+*/
+void load_audio_from_wav_file ( Audio* audio, char* file_path );
 
 
 /*-----------------------------------------------------------------------------*/
